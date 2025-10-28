@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<components origin="unity-software-sample">
+  <component type="desktop">
+    <id>org.unitysoftware.sample.desktop</id>
+    <pkgname>unity-sample</pkgname>
+    <name>Sample Application</name>
+    <summary>Explore the Ubuntu Unity Software Center sandbox</summary>
+    <description>
+      <p>This is example metadata shipped with the Ubuntu Unity Software Center sources to make the development build feel populated. Replace it with the distribution AppStream feeds for real content.</p>
+    </description>
+    <icon type="stock">org.ubuntuunity.software</icon>
+    <project_license>GPL-3.0+</project_license>
+    <metadata_license>CC0-1.0</metadata_license>
+    <provides>
+      <id>unity-sample</id>
+    </provides>
+    <url type="homepage">https://ubuntuunity.org/</url>
+    <launchable type="desktop-id">org.unitysoftware.sample.desktop</launchable>
+    <translation>unity-software</translation>
+    <categories>
+      <category>Utility</category>
+    </categories>
+    <keywords>
+      <keyword>sample</keyword>
+      <keyword>unity</keyword>
+    </keywords>
+    <releases>
+      <release version="1.0" date="2025-10-01"/>
+    </releases>
+  </component>
+</components>

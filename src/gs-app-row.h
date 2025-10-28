@@ -1,0 +1,50 @@
+/* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*-
+ * vi:set noexpandtab tabstop=8 shiftwidth=8:
+ *
+ * Copyright (C) 2012 Gautham Nair <gautham.nair.2005@gmail.com>
+ * Copyright (C) 2014-2018 Kalev Lember <klember@redhat.com>
+ *
+ * SPDX-License-Identifier: GPL-2.0+
+ */
+
+#pragma once
+
+#include <gtk/gtk.h>
+
+#include "unity-software-private.h"
+
+G_BEGIN_DECLS
+
+#define GS_TYPE_APP_ROW (gs_app_row_get_type ())
+
+G_DECLARE_DERIVABLE_TYPE (GsAppRow, gs_app_row, GS, APP_ROW, GtkListBoxRow)
+
+struct _GsAppRowClass
+{
+	GtkListBoxRowClass	 parent_class;
+	void			(*button_clicked)	(GsAppRow	*app_row);
+	void			(*unrevealed)		(GsAppRow	*app_row);
+};
+
+GtkWidget	*gs_app_row_new				(GsApp		*app);
+void		 gs_app_row_unreveal			(GsAppRow	*app_row);
+void		 gs_app_row_set_colorful		(GsAppRow	*app_row,
+							 gboolean	 colorful);
+void		 gs_app_row_set_show_buttons		(GsAppRow	*app_row,
+							 gboolean	 show_buttons);
+void		 gs_app_row_set_show_rating		(GsAppRow	*app_row,
+							 gboolean	 show_rating);
+void		 gs_app_row_set_show_source		(GsAppRow	*app_row,
+							 gboolean	 show_source);
+void		 gs_app_row_set_show_update		(GsAppRow	*app_row,
+							 gboolean	 show_update);
+GsApp		*gs_app_row_get_app			(GsAppRow	*app_row);
+void		 gs_app_row_set_size_groups		(GsAppRow	*app_row,
+							 GtkSizeGroup	*image,
+							 GtkSizeGroup	*name,
+							 GtkSizeGroup	*desc,
+							 GtkSizeGroup	*button);
+void		 gs_app_row_set_show_installed_size	(GsAppRow	*app_row,
+							 gboolean	 show_size);
+
+G_END_DECLS

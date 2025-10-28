@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Unity Software Center
+Exec=@bindir@/unity-software --gapplication-service
+OnlyShowIn=GNOME;Unity;
+NoDisplay=true

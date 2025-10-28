@@ -1,0 +1,26 @@
+Ubuntu Unity Software Center Release Notes
+
+Write release entries:
+
+git log --format="%s" --cherry-pick --right-only 3.38.1... | grep -i -v trivial | grep -v Merge | sort | uniq
+Add any user visible changes into data/appdata/org.ubuntuunity.software.appdata.xml.in
+
+Generate NEWS file:
+appstream-util appdata-to-news ../data/appdata/org.ubuntuunity.software.appdata.xml.in > NEWS
+
+git commit -a -m "Release version 7.7-Alpha1"
+git tag -s 7.7-Alpha1 -m "==== Version 7.7-Alpha1 ===="
+<enter password>
+
+ninja-build dist
+git push --tags
+git push
+
+scp meson-dist/*.tar.xz rhughes@master.gnome.org:
+ssh rhughes@master.gnome.org
+ftpadmin install ubuntu-unity-software-center-*.tar.xz
+
+Post release version bump in meson.build
+
+git commit -a -m "trivial: Post release version bump"
+git push

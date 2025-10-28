@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>org.unitysoftware.sample.desktop</id>
+  <name>Sample Application</name>
+  <summary>Placeholder metadata for development builds</summary>
+  <description>
+    <p>Install distribution AppStream data to see real applications. This placeholder shows that the pipelines function while running uninstalled.</p>
+  </description>
+  <icon type="stock">org.ubuntuunity.software</icon>
+  <project_license>GPL-3.0+</project_license>
+  <metadata_license>CC0-1.0</metadata_license>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="1.0" date="2025-10-01"/>
+  </releases>
+</component>
