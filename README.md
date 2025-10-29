@@ -1,5 +1,7 @@
 # Ubuntu Unity Software Center
 
+NOTE : THIS REPO WILL NOW BE MAINTAINED AND UPDATED IN [GITLAB](https://gitlab.com/gauthamnair2005/ubuntu-unity-software-center)
+
 This application was modified from  gnome-software 3.38.2
 
 Ubuntu Unity Software Center lets you install and update applications and
