@@ -527,15 +527,29 @@ gs_installed_page_pending_apps_changed_cb (GsPluginLoader *plugin_loader,
 	}
 
 	/* show a label with the number of on-going operations */
-	widget = GTK_WIDGET (gtk_builder_get_object (self->builder,
-						     "button_installed_counter"));
-	if (cnt == 0) {
-		gtk_widget_hide (widget);
-	} else {
-		g_autofree gchar *label = NULL;
-		label = g_strdup_printf ("%u", cnt);
-		gtk_label_set_label (GTK_LABEL (widget), label);
-		gtk_widget_show (widget);
+	widget = GTK_WIDGET (gtk_builder_get_object (self->builder, "stack_main"));
+	if (GTK_IS_STACK (widget)) {
+		GtkWidget *installed_page_widget;
+		installed_page_widget = GTK_WIDGET (gtk_builder_get_object (self->builder, "installed_page"));
+		if (installed_page_widget != NULL) {
+			gboolean highlight = FALSE;
+
+			if (cnt == 0) {
+				gtk_container_child_set (GTK_CONTAINER (widget), installed_page_widget,
+					     "title", _("Installed"),
+					     "needs-attention", FALSE,
+					     NULL);
+			} else {
+				g_autofree gchar *title = NULL;
+
+				title = g_strdup_printf (ngettext ("Installed (%u)", "Installed (%u)", cnt), cnt);
+				highlight = gs_shell_get_mode (self->shell) != GS_SHELL_MODE_INSTALLED;
+				gtk_container_child_set (GTK_CONTAINER (widget), installed_page_widget,
+					     "title", title,
+					     "needs-attention", highlight,
+					     NULL);
+			}
+		}
 	}
 }
 

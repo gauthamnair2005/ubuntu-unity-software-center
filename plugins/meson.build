@@ -20,7 +20,7 @@ endif
 if get_option('flatpak')
   subdir('flatpak')
 endif
-if get_option('fwupd')
+if enable_fwupd_plugin
   subdir('fwupd')
 endif
 if get_option('gudev')

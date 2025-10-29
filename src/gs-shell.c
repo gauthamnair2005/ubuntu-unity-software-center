@@ -1,13 +1,3 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*-
- * vi:set noexpandtab tabstop=8 shiftwidth=8:
- *
- * Copyright (C) 2013-2017 Gautham Nair <gautham.nair.2005@gmail.com>
- * Copyright (C) 2013 Matthias Clasen <mclasen@redhat.com>
- * Copyright (C) 2014-2020 Kalev Lember <klember@redhat.com>
- *
- * SPDX-License-Identifier: GPL-2.0+
- */
-
 #include "config.h"
 
 #include <string.h>
@@ -454,24 +444,20 @@ gs_shell_change_mode (GsShell *shell,
 	/* set the window title back to default */
 	gtk_window_set_title (priv->main_window, g_get_application_name ());
 
-	/* update main buttons according to mode */
-	priv->ignore_primary_buttons = TRUE;
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_explore"));
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), mode == GS_SHELL_MODE_OVERVIEW);
-
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_installed"));
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), mode == GS_SHELL_MODE_INSTALLED);
-
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_updates"));
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), mode == GS_SHELL_MODE_UPDATES);
-	gtk_widget_set_visible (widget, gs_plugin_loader_get_allow_updates (priv->plugin_loader) ||
-					mode == GS_SHELL_MODE_UPDATES);
-
-	priv->ignore_primary_buttons = FALSE;
-
-	/* switch page */
+	/* update main navigation */
 	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "stack_main"));
+	g_return_if_fail (GTK_IS_STACK (widget));
+	if (mode == GS_SHELL_MODE_UPDATES) {
+		GtkWidget *updates_page = GTK_WIDGET (gtk_builder_get_object (priv->builder, "updates_page"));
+		if (updates_page != NULL)
+			gtk_container_child_set (GTK_CONTAINER (widget), updates_page,
+									 "visible", TRUE,
+									 NULL);
+	}
+
+	priv->ignore_primary_buttons = TRUE;
 	gtk_stack_set_visible_child_name (GTK_STACK (widget), page_name[mode]);
+	priv->ignore_primary_buttons = FALSE;
 
 	/* do action for mode */
 	priv->mode = mode;
@@ -572,12 +558,33 @@ gs_shell_change_mode (GsShell *shell,
 }
 
 static void
-gs_overview_page_button_cb (GtkWidget *widget, GsShell *shell)
+primary_stack_visible_child_notify_cb (GtkStack *stack,
+					 GParamSpec *pspec,
+					 GsShell *shell)
 {
-	GsShellMode mode;
-	mode = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (widget),
-						   "unity-software::overview-mode"));
-	gs_shell_change_mode (shell, mode, NULL, TRUE);
+	GsShellPrivate *priv = gs_shell_get_instance_private (shell);
+	const gchar *child_name;
+	GsShellMode requested_mode = GS_SHELL_MODE_UNKNOWN;
+	guint i;
+
+	if (priv->ignore_primary_buttons)
+		return;
+
+	child_name = gtk_stack_get_visible_child_name (stack);
+	if (child_name == NULL)
+		return;
+
+	for (i = GS_SHELL_MODE_OVERVIEW; i <= GS_SHELL_MODE_UPDATES; i++) {
+		if (g_strcmp0 (page_name[i], child_name) == 0) {
+			requested_mode = (GsShellMode) i;
+			break;
+		}
+	}
+
+	if (requested_mode == GS_SHELL_MODE_UNKNOWN || requested_mode == priv->mode)
+		return;
+
+	gs_shell_change_mode (shell, requested_mode, NULL, TRUE);
 }
 
 static void
@@ -1002,24 +1009,8 @@ gs_shell_main_window_realized_cb (GtkWidget *widget, GsShell *shell)
 
 	/* adapt the window for low and medium resolution screens */
 	gdk_monitor_get_geometry (monitor, &geometry);
-	if (geometry.width < 800 || geometry.height < 600) {
-		    GtkWidget *buttonbox = GTK_WIDGET (gtk_builder_get_object (priv->builder, "buttonbox_main"));
-
-		    gtk_container_child_set (GTK_CONTAINER (buttonbox),
-					     GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_explore")),
-					     "non-homogeneous", TRUE,
-					     NULL);
-		    gtk_container_child_set (GTK_CONTAINER (buttonbox),
-					     GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_installed")),
-					     "non-homogeneous", TRUE,
-					     NULL);
-		    gtk_container_child_set (GTK_CONTAINER (buttonbox),
-					     GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_updates")),
-					     "non-homogeneous", TRUE,
-					     NULL);
-	} else if (geometry.width < 1366 || geometry.height < 768) {
+	if (geometry.width < 1366 || geometry.height < 768)
 		gtk_window_set_default_size (priv->main_window, 1050, 600);
-	}
 }
 
 static void
@@ -1028,10 +1019,33 @@ gs_shell_allow_updates_notify_cb (GsPluginLoader *plugin_loader,
 				    GsShell *shell)
 {
 	GsShellPrivate *priv = gs_shell_get_instance_private (shell);
-	GtkWidget *widget;
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_updates"));
-	gtk_widget_set_visible (widget, gs_plugin_loader_get_allow_updates (plugin_loader) ||
-					priv->mode == GS_SHELL_MODE_UPDATES);
+	GtkWidget *stack;
+	GtkWidget *updates_page;
+	GtkWidget *switcher;
+	gboolean show_updates;
+
+	stack = GTK_WIDGET (gtk_builder_get_object (priv->builder, "stack_main"));
+	updates_page = GTK_WIDGET (gtk_builder_get_object (priv->builder, "updates_page"));
+	switcher = GTK_WIDGET (gtk_builder_get_object (priv->builder, "primary_switcher"));
+
+	if (!GTK_IS_STACK (stack) || updates_page == NULL)
+		return;
+
+	show_updates = gs_plugin_loader_get_allow_updates (plugin_loader) ||
+			      priv->mode == GS_SHELL_MODE_UPDATES;
+
+	gtk_container_child_set (GTK_CONTAINER (stack), updates_page,
+				     "visible", show_updates,
+				     NULL);
+
+	if (!show_updates) {
+		gtk_container_child_set (GTK_CONTAINER (stack), updates_page,
+				     "needs-attention", FALSE,
+				     "title", _("Updates"),
+				     NULL);
+		if (GTK_IS_WIDGET (switcher))
+			gtk_widget_set_tooltip_text (switcher, NULL);
+	}
 }
 
 typedef enum {
@@ -2154,6 +2168,11 @@ gs_shell_setup (GsShell *shell, GsPluginLoader *plugin_loader, GCancellable *can
 	/* get UI */
 	priv->builder = gtk_builder_new_from_resource ("/org/gnome/Software/unity-software.ui");
 	priv->main_window = GTK_WINDOW (gtk_builder_get_object (priv->builder, "window_software"));
+	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "branding_subtitle"));
+	if (GTK_IS_LABEL (widget)) {
+		g_autofree gchar *subtitle = g_strdup_printf (_("Modern app experiences for Ubuntu Unity %s"), PACKAGE_VERSION);
+		gtk_label_set_label (GTK_LABEL (widget), subtitle);
+	}
 	g_signal_connect (priv->main_window, "map",
 			  G_CALLBACK (gs_shell_main_window_mapped_cb), shell);
 	g_signal_connect (priv->main_window, "realize",
@@ -2204,24 +2223,10 @@ gs_shell_setup (GsShell *shell, GsPluginLoader *plugin_loader, GCancellable *can
 	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_back"));
 	g_signal_connect (widget, "clicked",
 			  G_CALLBACK (gs_shell_back_button_cb), shell);
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_explore"));
-	g_object_set_data (G_OBJECT (widget),
-			   "unity-software::overview-mode",
-			   GINT_TO_POINTER (GS_SHELL_MODE_OVERVIEW));
-	g_signal_connect (widget, "clicked",
-			  G_CALLBACK (gs_overview_page_button_cb), shell);
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_installed"));
-	g_object_set_data (G_OBJECT (widget),
-			   "unity-software::overview-mode",
-			   GINT_TO_POINTER (GS_SHELL_MODE_INSTALLED));
-	g_signal_connect (widget, "clicked",
-			  G_CALLBACK (gs_overview_page_button_cb), shell);
-	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_updates"));
-	g_object_set_data (G_OBJECT (widget),
-			   "unity-software::overview-mode",
-			   GINT_TO_POINTER (GS_SHELL_MODE_UPDATES));
-	g_signal_connect (widget, "clicked",
-			  G_CALLBACK (gs_overview_page_button_cb), shell);
+	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "stack_main"));
+	if (GTK_IS_STACK (widget))
+		g_signal_connect (widget, "notify::visible-child-name",
+			  G_CALLBACK (primary_stack_visible_child_notify_cb), shell);
 
 	/* set up in-app notification controls */
 	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "button_events_dismiss"));
@@ -2263,6 +2268,9 @@ gs_shell_setup (GsShell *shell, GsPluginLoader *plugin_loader, GCancellable *can
 	page = GS_PAGE (gtk_builder_get_object (priv->builder, "extras_page"));
 	g_hash_table_insert (priv->pages, g_strdup ("extras"), page);
 	gs_shell_setup_pages (shell);
+
+	/* ensure navigation reflects the current loader state */
+	gs_shell_allow_updates_notify_cb (priv->plugin_loader, NULL, shell);
 
 	/* set up the metered data info bar and mogwai */
 	widget = GTK_WIDGET (gtk_builder_get_object (priv->builder, "metered_updates_bar"));

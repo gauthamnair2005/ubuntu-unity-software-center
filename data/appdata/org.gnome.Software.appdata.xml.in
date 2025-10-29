@@ -4,19 +4,18 @@
   <id>org.ubuntuunity.software.desktop</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0+</project_license>
-  <name>GNOME Software</name>
-  <summary>Application manager for GNOME</summary>
+  <name>Ubuntu Unity Software Center</name>
+  <summary>Discover curated applications for Ubuntu Unity</summary>
   <description>
     <p>
-      Software allows you to find and install new applications and system
-      extensions and remove existing installed applications.
+      Ubuntu Unity Software Center lets you browse, install, and manage
+      applications tailored for the Ubuntu Unity desktop experience.
     </p>
     <p>
-      GNOME Software showcases featured and popular applications with useful
-      descriptions and multiple screenshots per application.
-      Applications can be found either through browsing the list of categories
-      or by searching.
-      It also allows you to update your system using an offline update.
+      Featured collections highlight recommendations from the Ubuntu Unity team
+      with rich descriptions and screenshots. You can discover software through
+      curated categories or powerful search, and keep your system current with
+      streamlined update workflows.
     </p>
   </description>
   <screenshots>
@@ -46,6 +45,18 @@
    Validate with `appstream-util validate *.appdata.xml`
   -->
   <releases>
+    <release date="2025-10-28" version="7.7.0">
+      <description>
+        <p>
+          Highlights for this Ubuntu Unity refresh:
+        </p>
+        <ul>
+          <li>Updated the header bar with modern Ubuntu Unity branding and a refreshed navigation switcher.</li>
+          <li>Retitled recommended collections to emphasize picks from Ubuntu Unity developers.</li>
+          <li>Finalized the release version as 7.7.0 to replace the previous Alpha label.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2020-03-11" version="3.38.2">
       <description>
         <p>

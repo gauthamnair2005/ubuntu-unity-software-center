@@ -273,29 +273,45 @@ gs_updates_page_get_state_string (GsPluginStatus status)
 static void
 refresh_headerbar_updates_counter (GsUpdatesPage *self)
 {
-	GtkWidget *widget;
+	GtkWidget *stack;
+	GtkWidget *updates_page_widget;
+	GtkWidget *switcher;
 	guint num_updates;
+	gboolean allow_updates;
+
+	stack = GTK_WIDGET (gtk_builder_get_object (self->builder, "stack_main"));
+	updates_page_widget = GTK_WIDGET (gtk_builder_get_object (self->builder, "updates_page"));
+	switcher = GTK_WIDGET (gtk_builder_get_object (self->builder, "primary_switcher"));
+
+	if (!GTK_IS_STACK (stack) || updates_page_widget == NULL)
+		return;
 
 	num_updates = _get_num_updates (self);
+	allow_updates = gs_plugin_loader_get_allow_updates (self->plugin_loader);
 
-	/* update the counter */
-	widget = GTK_WIDGET (gtk_builder_get_object (self->builder, "button_updates_counter"));
-	if (num_updates > 0 &&
-	    gs_plugin_loader_get_allow_updates (self->plugin_loader)) {
-		g_autofree gchar *text = NULL;
-		text = g_strdup_printf ("%u", num_updates);
-		gtk_label_set_label (GTK_LABEL (widget), text);
-		gtk_widget_show (widget);
+	if (num_updates > 0 && allow_updates) {
+		g_autofree gchar *title = NULL;
+		g_autofree gchar *tooltip = NULL;
+
+		title = g_strdup_printf (ngettext ("Updates (%u)", "Updates (%u)", num_updates),
+				        num_updates);
+		gtk_container_child_set (GTK_CONTAINER (stack), updates_page_widget,
+				     "title", title,
+				     "needs-attention", TRUE,
+				     NULL);
+
+		tooltip = g_strdup_printf (ngettext ("%u update available", "%u updates available", num_updates),
+				        num_updates);
+		if (GTK_IS_WIDGET (switcher))
+			gtk_widget_set_tooltip_text (switcher, tooltip);
 	} else {
-		gtk_widget_hide (widget);
+		gtk_container_child_set (GTK_CONTAINER (stack), updates_page_widget,
+				     "title", _("Updates"),
+				     "needs-attention", FALSE,
+				     NULL);
+		if (GTK_IS_WIDGET (switcher))
+			gtk_widget_set_tooltip_text (switcher, NULL);
 	}
-
-	/* update the tab style */
-	if (num_updates > 0 &&
-	    gs_shell_get_mode (self->shell) != GS_SHELL_MODE_UPDATES)
-		gtk_style_context_add_class (gtk_widget_get_style_context (widget), "needs-attention");
-	else
-		gtk_style_context_remove_class (gtk_widget_get_style_context (widget), "needs-attention");
 }
 
 static void
@@ -499,10 +515,9 @@ gs_updates_page_network_available_notify_cb (GsPluginLoader *plugin_loader,
 
 static void
 gs_updates_page_get_updates_cb (GsPluginLoader *plugin_loader,
-                                GAsyncResult *res,
-                                GsUpdatesPage *self)
+								GAsyncResult *res,
+								GsUpdatesPage *self)
 {
-	GtkWidget *widget;
 	g_autoptr(GError) error = NULL;
 	g_autoptr(GsAppList) list = NULL;
 
@@ -515,11 +530,9 @@ gs_updates_page_get_updates_cb (GsPluginLoader *plugin_loader,
 		if (!g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_CANCELLED))
 			g_warning ("updates-shell: failed to get updates: %s", error->message);
 		gtk_label_set_label (GTK_LABEL (self->label_updates_failed),
-				     error->message);
+			     error->message);
 		gs_updates_page_set_state (self, GS_UPDATES_PAGE_STATE_FAILED);
-		widget = GTK_WIDGET (gtk_builder_get_object (self->builder,
-							     "button_updates_counter"));
-		gtk_widget_hide (widget);
+		refresh_headerbar_updates_counter (self);
 		return;
 	}
 

@@ -1,5 +1,5 @@
 project('unity-software', 'c',
-  version : '7.7-Alpha1',
+  version : '7.7.0',
   license : 'GPL-2.0+',
   default_options : ['warning_level=1', 'c_std=c99'],
   meson_version : '>=0.47.0'
@@ -169,8 +169,22 @@ if get_option('eos_updater')
   ostree = dependency('ostree-1')
 endif
 
-if get_option('fwupd')
-  fwupd = dependency('fwupd', version : '>= 1.0.3')
+fwupd_option = get_option('fwupd')
+enable_fwupd_plugin = false
+fwupd = disabler()
+
+if not fwupd_option.disabled()
+  fwupd = dependency('fwupd', version : '>= 1.0.3',
+                     required : fwupd_option.enabled())
+  if fwupd.found()
+    enable_fwupd_plugin = true
+  elif fwupd_option.enabled()
+    error('fwupd support requested but libfwupd (>= 1.0.3) was not found')
+  else
+    message('fwupd support disabled: libfwupd (>= 1.0.3) not found')
+  endif
+else
+  message('fwupd support disabled by configuration')
 endif
 
 if get_option('flatpak')

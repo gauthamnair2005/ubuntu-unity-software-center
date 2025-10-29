@@ -16,6 +16,7 @@
 #include <glib/gi18n.h>
 #include <gio/gio.h>
 #include <gio/gdesktopappinfo.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <libsoup/soup.h>
 
 #ifdef GDK_WINDOWING_X11
@@ -443,25 +444,33 @@ about_activated (GSimpleAction *action,
 	gtk_about_dialog_set_version (dialog, VERSION);
 	gtk_about_dialog_set_program_name (dialog, g_get_application_name ());
 	if (icon_theme != NULL && !gtk_icon_theme_has_icon (icon_theme, "org.ubuntuunity.software")) {
-		const gchar *data_dir = gs_application_get_data_dir ();
-		if (data_dir != NULL) {
-			g_autofree gchar *icon_path = g_build_filename (data_dir,
-						      "icons",
-						      "hicolor",
-						      "scalable",
-						      "org.ubuntuunity.software.svg",
-						      NULL);
-			if (g_file_test (icon_path, G_FILE_TEST_EXISTS)) {
-				GdkPixbuf *pixbuf;
-				GError *error = NULL;
-
-				pixbuf = gdk_pixbuf_new_from_file (icon_path, &error);
-				if (pixbuf != NULL) {
-					gtk_about_dialog_set_logo (dialog, pixbuf);
-					g_object_unref (pixbuf);
-				} else if (error != NULL) {
-					g_debug ("Failed to load fallback about-logo: %s", error->message);
-					g_clear_error (&error);
+		GError *error = NULL;
+		GdkPixbuf *pixbuf = gdk_pixbuf_new_from_resource ("/org/gnome/Software/icons/org.ubuntuunity.software.svg", &error);
+		if (pixbuf != NULL) {
+			gtk_about_dialog_set_logo (dialog, pixbuf);
+			g_object_unref (pixbuf);
+		} else {
+			const gchar *data_dir = gs_application_get_data_dir ();
+			if (error != NULL) {
+				g_debug ("Failed to load resource about-logo: %s", error->message);
+				g_clear_error (&error);
+			}
+			if (data_dir != NULL) {
+				g_autofree gchar *icon_path = g_build_filename (data_dir,
+					      "icons",
+					      "hicolor",
+					      "scalable",
+					      "org.ubuntuunity.software.svg",
+					      NULL);
+				if (g_file_test (icon_path, G_FILE_TEST_EXISTS)) {
+					pixbuf = gdk_pixbuf_new_from_file (icon_path, &error);
+					if (pixbuf != NULL) {
+						gtk_about_dialog_set_logo (dialog, pixbuf);
+						g_object_unref (pixbuf);
+					} else if (error != NULL) {
+						g_debug ("Failed to load fallback about-logo: %s", error->message);
+						g_clear_error (&error);
+					}
 				}
 			}
 		}
@@ -1101,6 +1110,12 @@ gs_application_startup (GApplication *application)
 				  application);
 
 	gs_application_initialize_ui (app);
+
+	{
+		GtkIconTheme *icon_theme = gtk_icon_theme_get_default ();
+		if (icon_theme != NULL)
+			gtk_icon_theme_add_resource_path (icon_theme, "/org/gnome/Software/icons");
+	}
 
 	GS_APPLICATION (application)->update_monitor =
 		gs_update_monitor_new (GS_APPLICATION (application));

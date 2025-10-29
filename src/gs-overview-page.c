@@ -1,28 +1,27 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*-
- * vi:set noexpandtab tabstop=8 shiftwidth=8:
- *
- * Copyright (C) 2013-2017 Gautham Nair <gautham.nair.2005@gmail.com>
- * Copyright (C) 2014-2018 Kalev Lember <klember@redhat.com>
- *
- * SPDX-License-Identifier: GPL-2.0+
- */
-
 #include "config.h"
 
 #include <glib/gi18n.h>
 #include <math.h>
+#include <libsoup/soup.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include "gs-shell.h"
 #include "gs-overview-page.h"
 #include "gs-app-list-private.h"
 #include "gs-popular-tile.h"
-#include "gs-feature-tile.h"
 #include "gs-category-tile.h"
 #include "gs-hiding-box.h"
 #include "gs-common.h"
+#include "gs-screenshot-image.h"
 
 #define N_TILES					9
 #define FEATURED_ROTATE_TIME			30 /* seconds */
+
+/* Hero slideshow constants */
+#define HERO_MAX_SLIDES			5
+#define HERO_SCREENSHOT_WIDTH		640
+#define HERO_SCREENSHOT_HEIGHT		360
+#define HERO_APP_DATA_KEY		"GnomeSoftware::HeroApp"
 
 typedef struct
 {
@@ -38,11 +37,13 @@ typedef struct
 	gboolean		 loading_popular_rotating;
 	gboolean		 loading_categories;
 	gboolean		 empty;
+	gboolean		 hero_has_content;
 	gchar			*category_of_day;
 	GHashTable		*category_hash;		/* id : GsCategory */
 	GSettings		*settings;
 	GsApp			*third_party_repo;
 	guint			 featured_rotate_timer_id;
+	SoupSession		*soup_session;
 
 	GtkWidget		*infobar_third_party;
 	GtkWidget		*label_third_party;
@@ -76,6 +77,14 @@ typedef struct {
         GsOverviewPage	*self;
         const gchar	*title;
 } LoadData;
+
+/* Forward declarations for the hero slideshow */
+static void gs_overview_page_show_hero_placeholder (GsOverviewPage *self, const gchar *message);
+static GtkWidget *create_hero_slide (GsOverviewPage *self, GsApp *app);
+static void hero_slide_button_clicked_cb (GtkButton *button, gpointer user_data);
+static void featured_reset_rotate_timer (GsOverviewPage *self);
+static gboolean gs_overview_page_render_hero_slides (GsOverviewPage *self, GsAppList *list);
+static void gs_overview_page_try_fallback_hero (GsOverviewPage *self, GsAppList *list);
 
 static void
 load_data_free (LoadData *data)
@@ -138,6 +147,134 @@ gs_overview_page_decrement_action_cnt (GsOverviewPage *self)
 }
 
 static void
+gs_overview_page_show_hero_placeholder (GsOverviewPage *self, const gchar *message)
+{
+	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	GtkWidget *box;
+	GtkWidget *spinner = NULL;
+	GtkWidget *label;
+
+	priv->hero_has_content = FALSE;
+
+	if (priv->featured_rotate_timer_id != 0) {
+		g_source_remove (priv->featured_rotate_timer_id);
+		priv->featured_rotate_timer_id = 0;
+	}
+
+	gtk_widget_set_visible (priv->overlay, TRUE);
+	gtk_widget_set_visible (priv->button_featured_back, FALSE);
+	gtk_widget_set_visible (priv->button_featured_forwards, FALSE);
+
+	gs_container_remove_all (GTK_CONTAINER (priv->stack_featured));
+
+	box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
+	gtk_widget_set_visible (box, TRUE);
+	gtk_widget_set_hexpand (box, TRUE);
+	gtk_widget_set_halign (box, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
+	gtk_style_context_add_class (gtk_widget_get_style_context (box), "hero-slide-box");
+
+	if (message == NULL)
+		spinner = gtk_spinner_new ();
+
+	if (spinner != NULL) {
+		gtk_widget_set_visible (spinner, TRUE);
+		gtk_widget_set_halign (spinner, GTK_ALIGN_CENTER);
+		gtk_widget_set_valign (spinner, GTK_ALIGN_CENTER);
+		gtk_widget_set_margin_bottom (spinner, 6);
+		gtk_spinner_start (GTK_SPINNER (spinner));
+		gtk_container_add (GTK_CONTAINER (box), spinner);
+		message = _("Loading highlights…");
+	}
+
+	label = gtk_label_new (message);
+	gtk_widget_set_visible (label, TRUE);
+	gtk_widget_set_halign (label, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign (label, GTK_ALIGN_CENTER);
+	gtk_label_set_xalign (GTK_LABEL (label), 0.5f);
+	gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
+	gtk_label_set_max_width_chars (GTK_LABEL (label), 42);
+	gtk_style_context_add_class (gtk_widget_get_style_context (label), "hero-slide-subtitle");
+	gtk_container_add (GTK_CONTAINER (box), label);
+
+	gtk_stack_add_named (GTK_STACK (priv->stack_featured), box, "hero-placeholder");
+	gtk_stack_set_visible_child (GTK_STACK (priv->stack_featured), box);
+}
+
+static gboolean
+gs_overview_page_render_hero_slides (GsOverviewPage *self, GsAppList *list)
+{
+	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	GtkWidget *first_slide = NULL;
+	guint slide_count = 0;
+	guint total;
+
+	if (list == NULL)
+		return FALSE;
+
+	total = gs_app_list_length (list);
+	if (total == 0)
+		return FALSE;
+
+	gs_container_remove_all (GTK_CONTAINER (priv->stack_featured));
+
+	for (guint i = 0; i < total && slide_count < HERO_MAX_SLIDES; i++) {
+		GsApp *app = gs_app_list_index (list, i);
+		GtkWidget *slide = create_hero_slide (self, app);
+		gchar *stack_name;
+
+		if (slide == NULL)
+			continue;
+
+		if (first_slide == NULL)
+			first_slide = slide;
+
+		stack_name = g_strdup_printf ("hero-%u", slide_count);
+		gtk_stack_add_named (GTK_STACK (priv->stack_featured), slide, stack_name);
+		g_free (stack_name);
+		slide_count++;
+	}
+
+	if (slide_count == 0)
+		return FALSE;
+
+	gtk_widget_set_visible (priv->overlay, TRUE);
+	gtk_widget_set_visible (priv->button_featured_back, slide_count > 1);
+	gtk_widget_set_visible (priv->button_featured_forwards, slide_count > 1);
+
+	if (first_slide != NULL)
+		gtk_stack_set_visible_child (GTK_STACK (priv->stack_featured), first_slide);
+
+	priv->hero_has_content = TRUE;
+
+	if (slide_count > 1)
+		featured_reset_rotate_timer (self);
+
+	return TRUE;
+}
+
+static void
+gs_overview_page_try_fallback_hero (GsOverviewPage *self, GsAppList *list)
+{
+	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	g_autoptr(GsAppList) copy = NULL;
+
+	if (priv->hero_has_content)
+		return;
+	if (list == NULL)
+		return;
+	if (gs_app_list_length (list) == 0)
+		return;
+
+	copy = gs_app_list_copy (list);
+	gs_app_list_filter_duplicates (copy, GS_APP_LIST_FILTER_FLAG_KEY_ID);
+	gs_app_list_randomize (copy);
+
+	if (gs_overview_page_render_hero_slides (self, copy))
+		priv->empty = FALSE;
+}
+
+static void
 gs_overview_page_get_popular_cb (GObject *source_object,
                                  GAsyncResult *res,
                                  gpointer user_data)
@@ -185,6 +322,8 @@ gs_overview_page_get_popular_cb (GObject *source_object,
 	gtk_widget_set_visible (priv->popular_heading, TRUE);
 
 	priv->empty = FALSE;
+
+	gs_overview_page_try_fallback_hero (self, list);
 
 out:
 	gs_overview_page_decrement_action_cnt (self);
@@ -236,6 +375,7 @@ gs_overview_page_get_recent_cb (GObject *source_object, GAsyncResult *res, gpoin
 	gtk_widget_set_visible (priv->recent_heading, TRUE);
 
 	priv->empty = FALSE;
+	gs_overview_page_try_fallback_hero (self, list);
 
 out:
 	gs_overview_page_decrement_action_cnt (self);
@@ -415,25 +555,35 @@ static void
 featured_reset_rotate_timer (GsOverviewPage *self)
 {
 	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	g_autoptr(GList) children = NULL;
 	if (priv->featured_rotate_timer_id != 0)
 		g_source_remove (priv->featured_rotate_timer_id);
+	priv->featured_rotate_timer_id = 0;
+
+	children = gtk_container_get_children (GTK_CONTAINER (priv->stack_featured));
+	/* Bail out when there is nothing to rotate. */
+	if (children == NULL || children->next == NULL)
+		return;
+
 	priv->featured_rotate_timer_id = g_timeout_add_seconds (FEATURED_ROTATE_TIME,
-								gs_overview_page_featured_rotate_cb,
-								self);
+							gs_overview_page_featured_rotate_cb,
+							self);
 }
 
 static void
-_featured_back_clicked_cb (GsCategoryTile *tile, gpointer data)
+_featured_back_clicked_cb (GtkButton *button, gpointer data)
 {
 	GsOverviewPage *self = GS_OVERVIEW_PAGE (data);
 	_feature_banner_back (self);
+	featured_reset_rotate_timer (self);
 }
 
 static void
-_featured_forward_clicked_cb (GsCategoryTile *tile, gpointer data)
+_featured_forward_clicked_cb (GtkButton *button, gpointer data)
 {
 	GsOverviewPage *self = GS_OVERVIEW_PAGE (data);
 	_feature_banner_forward (self);
+	featured_reset_rotate_timer (self);
 }
 
 static void
@@ -446,6 +596,8 @@ gs_overview_page_get_featured_cb (GObject *source_object,
 	GsPluginLoader *plugin_loader = GS_PLUGIN_LOADER (source_object);
 	g_autoptr(GError) error = NULL;
 	g_autoptr(GsAppList) list = NULL;
+	GsAppList *featured_list = NULL;
+	g_autoptr(GsAppList) filtered = NULL;
 
 	list = gs_plugin_loader_job_process_finish (plugin_loader, res, &error);
 	if (g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_CANCELLED))
@@ -456,41 +608,207 @@ gs_overview_page_get_featured_cb (GObject *source_object,
 		priv->featured_rotate_timer_id = 0;
 	}
 
-	gs_container_remove_all (GTK_CONTAINER (priv->stack_featured));
-	gtk_widget_set_visible (priv->overlay, gs_app_list_length (list) > 0);
-	gtk_widget_set_visible (priv->button_featured_back, gs_app_list_length (list) > 1);
-	gtk_widget_set_visible (priv->button_featured_forwards, gs_app_list_length (list) > 1);
 	if (list == NULL) {
-		g_warning ("failed to get featured apps: %s",
-			   error->message);
+		if (error != NULL)
+			g_warning ("failed to get featured apps: %s", error->message);
+		gs_overview_page_show_hero_placeholder (self, _("Unable to load highlights right now."));
 		goto out;
 	}
-	if (gs_app_list_length (list) == 0) {
-		g_warning ("failed to get featured apps: "
-			   "no apps to show");
-		goto out;
-	}
+	featured_list = list;
 
 	if (g_getenv ("GNOME_SOFTWARE_FEATURED") == NULL) {
-		/* Don't show apps from the category that's currently featured as the category of the day */
-		gs_app_list_filter (list, filter_category, priv->category_of_day);
-		gs_app_list_filter_duplicates (list, GS_APP_LIST_FILTER_FLAG_KEY_ID);
-		gs_app_list_randomize (list);
-	}
-	for (guint i = 0; i < gs_app_list_length (list); i++) {
-		GsApp *app = gs_app_list_index (list, i);
-		GtkWidget *tile = gs_feature_tile_new (app);
-		g_signal_connect (tile, "clicked",
-				  G_CALLBACK (app_tile_clicked), self);
-		gtk_container_add (GTK_CONTAINER (priv->stack_featured), tile);
+		/* Don't show apps from the category that's currently featured as the category of the day.
+		 * If the filtering removes everything, fall back to the original list. */
+		filtered = gs_app_list_copy (list);
+		gs_app_list_filter (filtered, filter_category, priv->category_of_day);
+		gs_app_list_filter_duplicates (filtered, GS_APP_LIST_FILTER_FLAG_KEY_ID);
+		gs_app_list_randomize (filtered);
+		if (gs_app_list_length (filtered) > 0)
+			featured_list = filtered;
 	}
 
-	priv->empty = FALSE;
-	featured_reset_rotate_timer (self);
+	if (featured_list == list) {
+		gs_app_list_filter_duplicates (featured_list, GS_APP_LIST_FILTER_FLAG_KEY_ID);
+		gs_app_list_randomize (featured_list);
+	}
+
+	if (gs_overview_page_render_hero_slides (self, featured_list)) {
+		priv->empty = FALSE;
+		goto out;
+	}
+
+	gs_overview_page_show_hero_placeholder (self, _("No highlights available right now."));
 
 out:
 	gs_overview_page_decrement_action_cnt (self);
 }
+
+static GtkWidget *
+create_hero_slide (GsOverviewPage *self, GsApp *app)
+{
+	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	GtkWidget *button;
+	GtkWidget *container;
+	GtkWidget *screenshot_overlay;
+	GtkWidget *caption_box;
+	GtkWidget *caption_icon;
+	GtkWidget *caption_texts;
+	GtkWidget *title_label;
+	const gchar *summary;
+	const GdkPixbuf *pixbuf;
+	GPtrArray *screenshots;
+
+	g_return_val_if_fail (GS_IS_APP (app), NULL);
+
+	button = gtk_button_new ();
+	gtk_widget_set_visible (button, TRUE);
+	gtk_widget_set_hexpand (button, TRUE);
+	gtk_widget_set_halign (button, GTK_ALIGN_FILL);
+	gtk_widget_set_valign (button, GTK_ALIGN_FILL);
+	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+	gtk_widget_set_focus_on_click (button, TRUE);
+	gtk_style_context_add_class (gtk_widget_get_style_context (button), "hero-slide-button");
+
+	container = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
+	gtk_widget_set_visible (container, TRUE);
+	gtk_style_context_add_class (gtk_widget_get_style_context (container), "hero-slide-box");
+	gtk_container_add (GTK_CONTAINER (button), container);
+
+	screenshot_overlay = gtk_overlay_new ();
+	gtk_widget_set_visible (screenshot_overlay, TRUE);
+	gtk_widget_set_hexpand (screenshot_overlay, TRUE);
+	gtk_widget_set_halign (screenshot_overlay, GTK_ALIGN_FILL);
+	gtk_widget_set_valign (screenshot_overlay, GTK_ALIGN_FILL);
+	gtk_style_context_add_class (gtk_widget_get_style_context (screenshot_overlay), "hero-slide-screenshot");
+	gtk_container_add (GTK_CONTAINER (container), screenshot_overlay);
+
+	screenshots = gs_app_get_screenshots (app);
+	if (screenshots != NULL && screenshots->len > 0) {
+		AsScreenshot *ss = g_ptr_array_index (screenshots, 0);
+		GtkWidget *ssimg = gs_screenshot_image_new (priv->soup_session);
+		gtk_widget_set_visible (ssimg, TRUE);
+		gtk_widget_set_hexpand (ssimg, TRUE);
+		gtk_widget_set_halign (ssimg, GTK_ALIGN_FILL);
+		gtk_widget_set_valign (ssimg, GTK_ALIGN_FILL);
+		gs_screenshot_image_set_screenshot (GS_SCREENSHOT_IMAGE (ssimg), ss);
+		gs_screenshot_image_set_size (GS_SCREENSHOT_IMAGE (ssimg),
+					     HERO_SCREENSHOT_WIDTH,
+					     HERO_SCREENSHOT_HEIGHT);
+		gs_screenshot_image_load_async (GS_SCREENSHOT_IMAGE (ssimg), NULL);
+		gtk_container_add (GTK_CONTAINER (screenshot_overlay), ssimg);
+	} else {
+		GtkWidget *fallback_box;
+		GtkWidget *fallback_icon;
+		GtkWidget *fallback_label;
+
+		fallback_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8);
+		gtk_widget_set_visible (fallback_box, TRUE);
+		gtk_widget_set_halign (fallback_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_valign (fallback_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_margin_top (fallback_box, 24);
+		gtk_widget_set_margin_bottom (fallback_box, 24);
+		gtk_container_add (GTK_CONTAINER (screenshot_overlay), fallback_box);
+
+		fallback_icon = gtk_image_new_from_icon_name ("image-x-generic", GTK_ICON_SIZE_DIALOG);
+		gtk_widget_set_visible (fallback_icon, TRUE);
+		gtk_widget_set_halign (fallback_icon, GTK_ALIGN_CENTER);
+		gtk_widget_set_valign (fallback_icon, GTK_ALIGN_CENTER);
+		gtk_container_add (GTK_CONTAINER (fallback_box), fallback_icon);
+
+		fallback_label = gtk_label_new (_("Screenshot coming soon"));
+		gtk_widget_set_visible (fallback_label, TRUE);
+		gtk_widget_set_halign (fallback_label, GTK_ALIGN_CENTER);
+		gtk_label_set_xalign (GTK_LABEL (fallback_label), 0.5f);
+		gtk_style_context_add_class (gtk_widget_get_style_context (fallback_label), "hero-slide-subtitle");
+		gtk_container_add (GTK_CONTAINER (fallback_box), fallback_label);
+	}
+
+	caption_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+	gtk_widget_set_visible (caption_box, TRUE);
+	gtk_widget_set_hexpand (caption_box, TRUE);
+	gtk_widget_set_halign (caption_box, GTK_ALIGN_FILL);
+	gtk_widget_set_valign (caption_box, GTK_ALIGN_END);
+	gtk_widget_set_margin_start (caption_box, 18);
+	gtk_widget_set_margin_end (caption_box, 18);
+	gtk_widget_set_margin_bottom (caption_box, 18);
+	gtk_style_context_add_class (gtk_widget_get_style_context (caption_box), "hero-slide-caption");
+	gtk_overlay_add_overlay (GTK_OVERLAY (screenshot_overlay), caption_box);
+
+	caption_icon = gtk_image_new ();
+	gtk_widget_set_visible (caption_icon, TRUE);
+	gtk_style_context_add_class (gtk_widget_get_style_context (caption_icon), "hero-slide-icon");
+	gtk_box_pack_start (GTK_BOX (caption_box), caption_icon, FALSE, FALSE, 0);
+
+	caption_texts = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+	gtk_widget_set_visible (caption_texts, TRUE);
+	gtk_widget_set_hexpand (caption_texts, TRUE);
+	gtk_box_pack_start (GTK_BOX (caption_box), caption_texts, TRUE, TRUE, 0);
+
+	title_label = gtk_label_new (gs_app_get_name (app));
+	gtk_widget_set_visible (title_label, TRUE);
+	gtk_style_context_add_class (gtk_widget_get_style_context (title_label), "hero-slide-title");
+	gtk_label_set_xalign (GTK_LABEL (title_label), 0.0f);
+	gtk_label_set_ellipsize (GTK_LABEL (title_label), PANGO_ELLIPSIZE_END);
+	gtk_label_set_max_width_chars (GTK_LABEL (title_label), 48);
+	gtk_box_pack_start (GTK_BOX (caption_texts), title_label, FALSE, FALSE, 0);
+
+	pixbuf = gs_app_get_pixbuf (app);
+	if (pixbuf != NULL) {
+		g_autoptr(GdkPixbuf) scaled = NULL;
+		gint target_size = 72;
+		if (gdk_pixbuf_get_width (pixbuf) != target_size || gdk_pixbuf_get_height (pixbuf) != target_size)
+			scaled = gdk_pixbuf_scale_simple (pixbuf, target_size, target_size, GDK_INTERP_BILINEAR);
+		if (scaled != NULL)
+			gs_image_set_from_pixbuf (GTK_IMAGE (caption_icon), scaled);
+		else
+			gs_image_set_from_pixbuf (GTK_IMAGE (caption_icon), pixbuf);
+	} else {
+		const gchar *icon_name = NULL;
+		GPtrArray *icons = gs_app_get_icons (app);
+		if (icons != NULL && icons->len > 0) {
+			AsIcon *icon = AS_ICON (g_ptr_array_index (icons, 0));
+			icon_name = as_icon_get_name (icon);
+		}
+		if (icon_name != NULL)
+			gtk_image_set_from_icon_name (GTK_IMAGE (caption_icon), icon_name, GTK_ICON_SIZE_DIALOG);
+		else
+			gtk_image_set_from_icon_name (GTK_IMAGE (caption_icon), "application-x-executable", GTK_ICON_SIZE_DIALOG);
+	}
+
+	summary = gs_app_get_summary (app);
+	if (summary != NULL && summary[0] != '\0') {
+		GtkWidget *subtitle = gtk_label_new (summary);
+		gtk_widget_set_visible (subtitle, TRUE);
+		gtk_style_context_add_class (gtk_widget_get_style_context (subtitle), "hero-slide-subtitle");
+		gtk_label_set_xalign (GTK_LABEL (subtitle), 0.0f);
+		gtk_label_set_line_wrap (GTK_LABEL (subtitle), TRUE);
+		gtk_label_set_line_wrap_mode (GTK_LABEL (subtitle), PANGO_WRAP_WORD_CHAR);
+		gtk_label_set_max_width_chars (GTK_LABEL (subtitle), 60);
+		gtk_box_pack_start (GTK_BOX (caption_texts), subtitle, FALSE, FALSE, 0);
+		gtk_widget_set_tooltip_text (button, summary);
+	}
+
+	g_object_set_data_full (G_OBJECT (button), HERO_APP_DATA_KEY,
+				 g_object_ref (app), g_object_unref);
+	g_signal_connect (button, "clicked",
+			 G_CALLBACK (hero_slide_button_clicked_cb), self);
+
+	gtk_widget_show_all (button);
+	return button;
+}
+
+static void
+hero_slide_button_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	GsOverviewPage *self = GS_OVERVIEW_PAGE (user_data);
+	GsOverviewPagePrivate *priv = gs_overview_page_get_instance_private (self);
+	GsApp *app;
+
+	app = g_object_get_data (G_OBJECT (button), HERO_APP_DATA_KEY);
+	if (app != NULL)
+		gs_shell_show_app (priv->shell, app);
+}
+
 
 static void
 category_tile_clicked (GsCategoryTile *tile, gpointer data)
@@ -717,9 +1035,11 @@ gs_overview_page_load (GsOverviewPage *self)
 		g_autoptr(GsPluginJob) plugin_job = NULL;
 
 		priv->loading_featured = TRUE;
+		gs_overview_page_show_hero_placeholder (self, NULL);
 		plugin_job = gs_plugin_job_newv (GS_PLUGIN_ACTION_GET_FEATURED,
 						 "max-results", 5,
-						 "refine-flags", GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON,
+					 "refine-flags", GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON |
+							   GS_PLUGIN_REFINE_FLAGS_REQUIRE_SCREENSHOTS,
 						 "dedupe-flags", GS_APP_LIST_FILTER_FLAG_PREFER_INSTALLED |
 								 GS_APP_LIST_FILTER_FLAG_KEY_ID_PROVIDES,
 						 NULL);
@@ -739,7 +1059,8 @@ gs_overview_page_load (GsOverviewPage *self)
 						 "max-results", 20,
 						 "refine-flags", GS_PLUGIN_REFINE_FLAGS_REQUIRE_RATING |
 								 GS_PLUGIN_REFINE_FLAGS_REQUIRE_CATEGORIES |
-								 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON,
+							 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON |
+							 GS_PLUGIN_REFINE_FLAGS_REQUIRE_SCREENSHOTS,
 						 "dedupe-flags", GS_APP_LIST_FILTER_FLAG_PREFER_INSTALLED |
 								 GS_APP_LIST_FILTER_FLAG_KEY_ID_PROVIDES,
 						 NULL);
@@ -759,7 +1080,8 @@ gs_overview_page_load (GsOverviewPage *self)
 						 "age", (guint64) (60 * 60 * 24 * 60),
 						 "max-results", 20,
 						 "refine-flags", GS_PLUGIN_REFINE_FLAGS_REQUIRE_RATING |
-								 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON,
+							 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON |
+							 GS_PLUGIN_REFINE_FLAGS_REQUIRE_SCREENSHOTS,
 						 "dedupe-flags", GS_APP_LIST_FILTER_FLAG_PREFER_INSTALLED |
 								 GS_APP_LIST_FILTER_FLAG_KEY_ID_PROVIDES,
 						 NULL);
@@ -804,7 +1126,8 @@ gs_overview_page_load (GsOverviewPage *self)
 							 "max-results", 20,
 							 "category", featured_category,
 							 "refine-flags", GS_PLUGIN_REFINE_FLAGS_REQUIRE_RATING |
-									 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON,
+								 GS_PLUGIN_REFINE_FLAGS_REQUIRE_ICON |
+								 GS_PLUGIN_REFINE_FLAGS_REQUIRE_SCREENSHOTS,
 							 "dedupe-flags", GS_APP_LIST_FILTER_FLAG_PREFER_INSTALLED |
 									 GS_APP_LIST_FILTER_FLAG_KEY_ID_PROVIDES,
 							 NULL);
@@ -950,9 +1273,6 @@ gs_overview_page_setup (GsPage *page,
 	adj = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (priv->scrolledwindow_overview));
 	gtk_container_set_focus_vadjustment (GTK_CONTAINER (priv->box_overview), adj);
 
-	tile = gs_feature_tile_new (NULL);
-	gtk_container_add (GTK_CONTAINER (priv->stack_featured), tile);
-
 	for (i = 0; i < N_TILES; i++) {
 		tile = gs_popular_tile_new (NULL);
 		gtk_container_add (GTK_CONTAINER (priv->box_popular), tile);
@@ -977,6 +1297,12 @@ gs_overview_page_init (GsOverviewPage *self)
 	g_signal_connect (priv->button_featured_forwards, "clicked",
 			  G_CALLBACK (_featured_forward_clicked_cb), self);
 
+	priv->soup_session = soup_session_new_with_options (SOUP_SESSION_USER_AGENT,
+							    gs_user_agent (),
+							    NULL);
+	gs_overview_page_show_hero_placeholder (self, NULL);
+	priv->hero_has_content = FALSE;
+
 	priv->settings = g_settings_new ("org.ubuntuunity.software");
 }
 
@@ -998,6 +1324,8 @@ gs_overview_page_dispose (GObject *object)
 		g_source_remove (priv->featured_rotate_timer_id);
 		priv->featured_rotate_timer_id = 0;
 	}
+
+	g_clear_object (&priv->soup_session);
 
 	G_OBJECT_CLASS (gs_overview_page_parent_class)->dispose (object);
 }

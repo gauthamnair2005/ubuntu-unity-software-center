@@ -72,21 +72,41 @@
                     <child>
                       <object class="GtkBox" id="box_overview">
                         <property name="visible">True</property>
-                        <property name="halign">center</property>
-                        <property name="hexpand">False</property>
-                        <property name="border_width">12</property>
+                        <property name="halign">fill</property>
+                        <property name="hexpand">True</property>
+                        <property name="border_width">18</property>
                         <property name="orientation">vertical</property>
+                        <property name="spacing">18</property>
+                        <child>
+                          <object class="GtkLabel" id="hero_subheading">
+                            <property name="visible">True</property>
+                            <property name="xalign">0</property>
+                            <property name="label" translatable="yes" comments="Heading placed above the hero carousel">Recommended by Unity Developers</property>
+                            <property name="margin-bottom">6</property>
+                            <style>
+                              <class name="index-title-alignment-software"/>
+                            </style>
+                          </object>
+                        </child>
+
                         <child>
                           <object class="GtkOverlay" id="overlay">
                             <property name="visible">True</property>
                             <property name="halign">fill</property>
                             <property name="valign">fill</property>
-                            <property name="height-request">150</property>
+                            <property name="height-request">340</property>
+                            <property name="margin-bottom">12</property>
+                            <style>
+                              <class name="hero-carousel"/>
+                            </style>
                             <child type="overlay">
                               <object class="GtkStack" id="stack_featured">
                                 <property name="visible">True</property>
                                 <property name="halign">fill</property>
+                                <property name="hexpand">True</property>
+                                <property name="valign">fill</property>
                                 <property name="transition-type">crossfade</property>
+                                <property name="transition-duration">350</property>
                               </object>
                             </child>
                             <child type="overlay">

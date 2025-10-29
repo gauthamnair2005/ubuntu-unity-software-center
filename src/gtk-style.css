@@ -44,9 +44,111 @@
 	border-radius: 1px;
 }
 
-.toolbar-primary-buttons-software {
-	padding-left: 26px;
-	padding-right: 26px;
+
+.primary-switcher button {
+	padding-left: 18px;
+	padding-right: 18px;
+}
+
+.primary-switcher button:checked {
+	background-image: none;
+}
+
+.primary-title-row {
+	padding: 0;
+}
+
+.primary-branding {
+	padding: 4px 10px;
+	border-radius: 12px;
+	background-image: none;
+	background-color: alpha(@theme_fg_color, 0.05);
+	border: 1px solid alpha(@theme_fg_color, 0.1);
+}
+
+.primary-branding-title {
+	font-weight: 600;
+	font-size: 110%;
+}
+
+.primary-branding-subtitle {
+	font-size: 85%;
+	opacity: 0.7;
+}
+
+#header {
+	padding-top: 6px;
+	padding-bottom: 6px;
+}
+
+.hero-carousel {
+	padding: 16px;
+	border-radius: 18px;
+	background-image: none;
+	background-color: alpha(@theme_fg_color, 0.04);
+	box-shadow: 0 12px 28px 0 alpha(@theme_fg_color, 0.08);
+}
+
+.hero-slide-button {
+	border-radius: 22px;
+	padding: 0;
+	background-color: transparent;
+	box-shadow: none;
+}
+.hero-slide-button:hover {
+	background-color: alpha(@theme_fg_color, 0.05);
+}
+.hero-slide-button:active {
+	background-color: alpha(@theme_fg_color, 0.1);
+}
+
+.hero-slide-box {
+	padding: 8px 8px 18px;
+}
+
+.hero-slide-screenshot {
+	border-radius: 18px;
+	background-color: alpha(@theme_fg_color, 0.06);
+	box-shadow: inset 0 0 0 1px alpha(@theme_fg_color, 0.04);
+}
+
+.hero-slide-meta {
+	margin-top: 12px;
+}
+
+.hero-slide-caption {
+	background-color: alpha(@theme_bg_color, 0.92);
+	border-radius: 16px;
+	padding: 12px 16px;
+	box-shadow: 0 8px 22px alpha(@theme_fg_color, 0.18);
+}
+
+.hero-slide-caption .hero-slide-title {
+	color: @theme_fg_color;
+}
+
+.hero-slide-caption .hero-slide-subtitle {
+	color: alpha(@theme_fg_color, 0.8);
+}
+
+.hero-slide-icon {
+	border-radius: 16px;
+	box-shadow: 0 6px 18px alpha(@theme_fg_color, 0.18);
+}
+
+.hero-slide-title {
+	font-size: 120%;
+	font-weight: 600;
+}
+
+.hero-slide-subtitle {
+	opacity: 0.7;
+	font-size: 90%;
+}
+
+#header .title {
+	margin-top: 0;
+	margin-bottom: 0;
 }
 
 .round-button {

@@ -81,103 +81,86 @@
                 <property name="visible">True</property>
                 <property name="hexpand">False</property>
                 <child>
-                  <object class="GtkButtonBox" id="buttonbox_main">
+                  <object class="GtkBox" id="buttonbox_main">
                     <property name="visible">True</property>
-                    <property name="layout_style">center</property>
+                    <property name="orientation">horizontal</property>
+                    <property name="halign">fill</property>
+                    <property name="hexpand">True</property>
+                    <property name="valign">center</property>
+                    <property name="spacing">16</property>
                     <style>
-                      <class name="linked"/>
+                      <class name="primary-title-row"/>
                     </style>
                     <child>
-                      <object class="GtkToggleButton" id="button_explore">
+                      <object class="GtkBox" id="branding_box">
                         <property name="visible">True</property>
-                        <property name="can_focus">True</property>
-                        <property name="receives_default">True</property>
-                        <property name="use_underline">True</property>
-                        <property name="label" translatable="yes" comments="Translators: A label for a button to show all available software.">_Explore</property>
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        <property name="halign">start</property>
+                        <property name="valign">center</property>
                         <style>
-                          <class name="toolbar-primary-buttons-software"/>
+                          <class name="primary-branding"/>
                         </style>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkToggleButton" id="button_installed">
-                        <property name="visible">True</property>
-                        <property name="can_focus">True</property>
-                        <property name="receives_default">True</property>
                         <child>
-                          <object class="GtkBox" id="button_installed_box">
+                          <object class="GtkImage" id="branding_icon">
                             <property name="visible">True</property>
-                            <property name="orientation">horizontal</property>
-                            <property name="halign">fill</property>
-                            <property name="spacing">6</property>
+                            <property name="resource">/org/gnome/Software/icons/org.ubuntuunity.software-symbolic.svg</property>
+                            <property name="pixel_size">24</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox" id="branding_labels">
+                            <property name="visible">True</property>
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">2</property>
                             <child>
-                              <object class="GtkLabel" id="button_installed_label">
+                              <object class="GtkLabel" id="branding_title">
                                 <property name="visible">True</property>
-                                <property name="use_underline">True</property>
-                                <property name="halign">center</property>
-                                <property name="hexpand">True</property>
-                                <property name="label" translatable="yes" comments="Translators: A label for a button to show only software which is already installed.">_Installed</property>
-                                <property name="mnemonic_widget">button_installed</property>
+                                <property name="label" translatable="yes" comments="Primary heading shown in the window title bar">Software Store</property>
+                                <property name="ellipsize">end</property>
                                 <style>
-                                  <class name="text-button"/>
+                                  <class name="primary-branding-title"/>
                                 </style>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkLabel" id="button_installed_counter">
-                                <property name="visible">False</property>
-                                <property name="width-chars">2</property>
+                              <object class="GtkLabel" id="branding_subtitle">
+                                <property name="visible">True</property>
+                                <property name="label" translatable="yes" comments="Subtitle tagline shown under the main heading">Discover great applications for your desktop</property>
+                                <property name="ellipsize">end</property>
                                 <style>
-                                  <class name="counter-label"/>
+                                  <class name="primary-branding-subtitle"/>
                                 </style>
                               </object>
                             </child>
                           </object>
                         </child>
-                        <style>
-                          <class name="toolbar-primary-buttons-software"/>
-                        </style>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkToggleButton" id="button_updates">
+                      <object class="GtkBox" id="primary_switcher_container">
                         <property name="visible">True</property>
-                        <property name="can_focus">True</property>
-                        <property name="receives_default">True</property>
+                        <property name="orientation">horizontal</property>
+                        <property name="hexpand">True</property>
+                        <property name="halign">center</property>
+                        <property name="valign">center</property>
                         <child>
-                          <object class="GtkBox" id="button_updates_box">
+                          <object class="GtkStackSwitcher" id="primary_switcher">
                             <property name="visible">True</property>
-                            <property name="orientation">horizontal</property>
-                            <property name="halign">fill</property>
-                            <property name="spacing">6</property>
-                            <child>
-                              <object class="GtkLabel" id="button_updates_label">
-                                <property name="visible">True</property>
-                                <property name="use_underline">True</property>
-                                <property name="halign">center</property>
-                                <property name="hexpand">True</property>
-                                <property name="label" translatable="yes" comments="Translators: A label for a button to show only updates which are available to install.">_Updates</property>
-                                <property name="mnemonic_widget">button_updates</property>
-                                <style>
-                                  <class name="text-button"/>
-                                </style>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel" id="button_updates_counter">
-                                <property name="visible">False</property>
-                                <property name="width-chars">2</property>
-                                <style>
-                                  <class name="counter-label"/>
-                                </style>
-                              </object>
-                            </child>
+                            <property name="valign">center</property>
+                            <property name="margin_top">0</property>
+                            <property name="stack">stack_main</property>
+                            <style>
+                              <class name="linked"/>
+                              <class name="primary-switcher"/>
+                            </style>
                           </object>
                         </child>
-                        <style>
-                          <class name="toolbar-primary-buttons-software"/>
-                        </style>
                       </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                      </packing>
                     </child>
                   </object>
                 </child>
@@ -498,6 +481,8 @@
                       </object>
                       <packing>
                         <property name="name">overview</property>
+                        <property name="title" translatable="yes">Explore</property>
+                        <property name="icon-name">view-grid-symbolic</property>
                       </packing>
                     </child>
                     <child>
@@ -506,6 +491,8 @@
                       </object>
                       <packing>
                         <property name="name">installed</property>
+                        <property name="title" translatable="yes">Installed</property>
+                        <property name="icon-name">system-software-install-symbolic</property>
                       </packing>
                     </child>
                     <child>
@@ -538,6 +525,8 @@
                       </object>
                       <packing>
                         <property name="name">updates</property>
+                        <property name="title" translatable="yes">Updates</property>
+                        <property name="icon-name">software-update-available-symbolic</property>
                       </packing>
                     </child>
 
